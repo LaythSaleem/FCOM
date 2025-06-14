@@ -27,6 +27,18 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' })); // Increased limit for photo uploads
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Serve static files from the React app build
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Catch all handler: send back React's index.html file for any non-API routes
+app.get('*', (req, res, next) => {
+  // Skip API routes
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, 'dist/index.html'));
+});
+
 // Auth middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
