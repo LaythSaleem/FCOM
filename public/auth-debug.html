@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production Auth Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 3px; font-size: 12px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Production Authentication Debug</h1>
+    
+    <div class="section">
+        <h3>Step 1: Check Current Token</h3>
+        <button onclick="checkToken()">Check Token</button>
+        <button onclick="clearStorage()">Clear Storage</button>
+        <div id="tokenResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>Step 2: Login</h3>
+        <button onclick="login()">Login as Admin</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <div class="section">
+        <h3>Step 3: Test API Calls</h3>
+        <button onclick="testStudents()">Test Students API</button>
+        <button onclick="testTeachers()">Test Teachers API</button>
+        <button onclick="testClasses()">Test Classes API</button>
+        <button onclick="testTopics()">Test Topics API</button>
+        <button onclick="testExams()">Test Exams API</button>
+        <div id="apiResults"></div>
+    </div>
+
+    <div class="section">
+        <h3>Database Info</h3>
+        <button onclick="initializeDB()">Initialize Database</button>
+        <div id="dbResult"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://student-attendance-system-4d0g.onrender.com/api';
+        
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            element.innerHTML = `<div class="${className}">${message}</div>`;
+        }
+
+        function checkToken() {
+            const token = localStorage.getItem('auth_token');
+            const user = localStorage.getItem('auth_user');
+            const role = localStorage.getItem('user_role');
+            
+            if (token) {
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    const isExpired = payload.exp * 1000 < Date.now();
+                    
+                    log('tokenResult', `
+                        <strong>Token Found:</strong><br>
+                        • Length: ${token.length} chars<br>
+                        • User: ${payload.email}<br>
+                        • Role: ${payload.role}<br>
+                        • Expires: ${new Date(payload.exp * 1000).toLocaleString()}<br>
+                        • Status: ${isExpired ? '❌ EXPIRED' : '✅ Valid'}<br>
+                        • Stored User: ${user}<br>
+                        • Stored Role: ${role}
+                    `, isExpired ? 'error' : 'success');
+                } catch (e) {
+                    log('tokenResult', `❌ Invalid token format: ${e.message}`, 'error');
+                }
+            } else {
+                log('tokenResult', '❌ No token found in localStorage', 'error');
+            }
+        }
+
+        function clearStorage() {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            localStorage.removeItem('user_role');
+            log('tokenResult', '✅ Storage cleared', 'success');
+        }
+
+        async function login() {
+            try {
+                log('loginResult', '🔄 Logging in...', 'info');
+                
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@school.com',
+                        password: 'admin123'
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('auth_token', data.token);
+                    localStorage.setItem('auth_user', JSON.stringify(data.user));
+                    localStorage.setItem('user_role', data.user.role);
+                    
+                    log('loginResult', `
+                        ✅ <strong>Login Successful!</strong><br>
+                        • User: ${data.user.email}<br>
+                        • Role: ${data.user.role}<br>
+                        • Token stored in localStorage
+                    `, 'success');
+                } else {
+                    const error = await response.text();
+                    log('loginResult', `❌ Login failed: ${response.status} - ${error}`, 'error');
+                }
+            } catch (error) {
+                log('loginResult', `❌ Network error: ${error.message}`, 'error');
+            }
+        }
+
+        function getAuthHeaders() {
+            const token = localStorage.getItem('auth_token');
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+        }
+
+        async function testAPI(name, endpoint) {
+            try {
+                const token = localStorage.getItem('auth_token');
+                if (!token) {
+                    return `❌ ${name}: No token available`;
+                }
+
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: getAuthHeaders()
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const count = Array.isArray(data) ? data.length : 'object';
+                    return `✅ ${name}: ${count} items`;
+                } else {
+                    const error = await response.text();
+                    return `❌ ${name}: ${response.status} - ${error}`;
+                }
+            } catch (error) {
+                return `❌ ${name}: Network error - ${error.message}`;
+            }
+        }
+
+        async function testStudents() {
+            const result = await testAPI('Students', '/students');
+            log('apiResults', result, result.includes('✅') ? 'success' : 'error');
+        }
+
+        async function testTeachers() {
+            const result = await testAPI('Teachers', '/teachers');
+            log('apiResults', result, result.includes('✅') ? 'success' : 'error');
+        }
+
+        async function testClasses() {
+            const result = await testAPI('Classes', '/classes');
+            log('apiResults', result, result.includes('✅') ? 'success' : 'error');
+        }
+
+        async function testTopics() {
+            const result = await testAPI('Topics', '/teachers/available-topics');
+            log('apiResults', result, result.includes('✅') ? 'success' : 'error');
+        }
+
+        async function testExams() {
+            const result = await testAPI('Exams', '/exams');
+            log('apiResults', result, result.includes('✅') ? 'success' : 'error');
+        }
+
+        async function initializeDB() {
+            try {
+                log('dbResult', '🔄 Initializing database...', 'info');
+                
+                const token = localStorage.getItem('auth_token');
+                if (!token) {
+                    log('dbResult', '❌ Please login first', 'error');
+                    return;
+                }
+
+                const response = await fetch(`${API_BASE}/init-database`, {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.status === 'already_initialized') {
+                        log('dbResult', `
+                            ℹ️ <strong>Database Already Populated</strong><br>
+                            • Users: ${result.userCount}<br>
+                            • Status: ${result.message}
+                        `, 'info');
+                    } else {
+                        log('dbResult', `
+                            ✅ <strong>Database Initialized Successfully!</strong><br>
+                            • Users: ${result.counts.users}<br>
+                            • Students: ${result.counts.students}<br>
+                            • Teachers: ${result.counts.teachers}<br>
+                            • Classes: ${result.counts.classes}<br><br>
+                            <strong>You can now test the API endpoints above!</strong>
+                        `, 'success');
+                    }
+                } else {
+                    const error = await response.text();
+                    log('dbResult', `❌ Database initialization failed: ${response.status} - ${error}`, 'error');
+                }
+            } catch (error) {
+                log('dbResult', `❌ Network error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-check token on page load
+        window.addEventListener('load', () => {
+            checkToken();
+        });
+    </script>
+</body>
+</html>

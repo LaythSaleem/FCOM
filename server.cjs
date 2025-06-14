@@ -2736,6 +2736,61 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Database initialization endpoint (admin only)
+app.post('/api/init-database', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    console.log('🔧 Initializing database with sample data...');
+    
+    // Check if database is already populated
+    const existingUsers = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    if (existingUsers.count > 2) {
+      return res.json({ 
+        message: 'Database already populated', 
+        userCount: existingUsers.count,
+        status: 'already_initialized'
+      });
+    }
+
+    // Run database initialization
+    const { execSync } = require('child_process');
+    execSync('node init-db.cjs', { cwd: __dirname });
+    
+    // Add sample data
+    execSync('node add-sample-data.cjs', { cwd: __dirname });
+    
+    // Get final counts
+    const finalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    const students = db.prepare('SELECT COUNT(*) as count FROM students').get();
+    const teachers = db.prepare('SELECT COUNT(*) as count FROM teachers').get();
+    const classes = db.prepare('SELECT COUNT(*) as count FROM classes').get();
+    
+    console.log('✅ Database initialization completed');
+    
+    res.json({
+      message: 'Database initialized successfully',
+      status: 'initialized',
+      counts: {
+        users: finalUsers.count,
+        students: students.count,
+        teachers: teachers.count,
+        classes: classes.count
+      }
+    });
+    
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    res.status(500).json({ 
+      error: 'Database initialization failed',
+      details: error.message 
+    });
+  }
+});
+
 // Catch all handler: send back React's index.html file for any non-API routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist/index.html'));
