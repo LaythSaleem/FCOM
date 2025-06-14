@@ -14,7 +14,6 @@
     "init-db": "node init-db.cjs",
     "add-sample-data": "node add-sample-data.cjs",
     "start": "node server.cjs",
-    "start:minimal": "node minimal-server.cjs",
     "postbuild": "echo 'Build completed successfully'"
   },
   "dependencies": {
@@ -39,10 +38,10 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.9",
-    "@types/uuid": "^10.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.21",
     "axios": "^1.9.0",
