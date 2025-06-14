@@ -30,15 +30,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Serve static files from the React app build
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Catch all handler: send back React's index.html file for any non-API routes
-app.get('*', (req, res, next) => {
-  // Skip API routes
-  if (req.path.startsWith('/api/')) {
-    return next();
-  }
-  res.sendFile(path.join(__dirname, 'dist/index.html'));
-});
-
 // Auth middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -2743,6 +2734,11 @@ app.get('/api/subjects/dropdown', authenticateToken, (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Catch all handler: send back React's index.html file for any non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist/index.html'));
 });
 
 // Start server
