@@ -125,6 +125,8 @@ function initializeDatabase() {
       section TEXT NOT NULL,
       academic_year_id TEXT NOT NULL,
       teacher_id TEXT,
+      description TEXT,
+      capacity INTEGER DEFAULT 30,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL,

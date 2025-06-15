@@ -38,75 +38,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Serve static files from the React app build
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// DEBUG: Environment variables endpoint (temporary for production debugging)
-app.get('/api/env-debug', (req, res) => {
-  res.json({
-    port: PORT,
-    nodeEnv: process.env.NODE_ENV || 'development',
-    jwtSecretSet: !!process.env.JWT_SECRET,
-    jwtSecretLength: JWT_SECRET.length,
-    jwtSecretFirst10: JWT_SECRET.substring(0, 10),
-    envVarsCount: Object.keys(process.env).length,
-    hasRenderVars: !!(process.env.RENDER || process.env.RENDER_SERVICE_ID),
-    timestamp: new Date().toISOString()
-  });
-});
-
-// DEBUG: Database schema endpoint (temporary for production debugging)
-app.get('/api/db-debug', (req, res) => {
-  try {
-    // Check if classes table exists and get its schema
-    const tablesQuery = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    const tables = tablesQuery.map(t => t.name);
-    
-    let classesSchema = [];
-    let topicsSchema = [];
-    
-    try {
-      const classesInfo = db.pragma('table_info(classes)');
-      classesSchema = classesInfo.map(col => ({ name: col.name, type: col.type }));
-    } catch (e) {
-      classesSchema = [`Error: ${e.message}`];
-    }
-    
-    try {
-      const topicsInfo = db.pragma('table_info(topics)');
-      topicsSchema = topicsInfo.map(col => ({ name: col.name, type: col.type }));
-    } catch (e) {
-      topicsSchema = [`Error: ${e.message}`];
-    }
-
-    // Test simple queries
-    let classesCount = 0;
-    let topicsCount = 0;
-    
-    try {
-      const countResult = db.prepare("SELECT COUNT(*) as count FROM classes").get();
-      classesCount = countResult.count;
-    } catch (e) {
-      classesCount = `Error: ${e.message}`;
-    }
-    
-    try {
-      const countResult = db.prepare("SELECT COUNT(*) as count FROM topics").get();
-      topicsCount = countResult.count;
-    } catch (e) {
-      topicsCount = `Error: ${e.message}`;
-    }
-
-    res.json({
-      allTables: tables,
-      classesSchema,
-      topicsSchema,
-      classesCount,
-      topicsCount,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Auth middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -1792,11 +1723,11 @@ app.get('/api/reports/student-attendance/:studentId', authenticateToken, (req, r
         c.name as class_name,
         c.section,
         t.name as teacher_name,
-        tp.name as topic_name
+        top.name as topic_name
       FROM attendance a
       LEFT JOIN classes c ON a.class_id = c.id
       LEFT JOIN teachers t ON c.teacher_id = t.id
-      LEFT JOIN topics tp ON a.topic_id = tp.id
+      LEFT JOIN topics top ON a.topic_id = top.id
       WHERE a.student_id = ? AND DATE(a.date) BETWEEN ? AND ?
       ORDER BY a.date DESC
     `).all(studentId, start, end);
@@ -1857,7 +1788,6 @@ app.get('/api/reports/class-performance', authenticateToken, (req, res) => {
         AND a.class_id = c.id 
         AND DATE(a.date) BETWEEN ? AND ?
       LEFT JOIN teachers t ON c.teacher_id = t.id
-      LEFT JOIN users u ON t.user_id = u.id
       WHERE 1=1
     `;
     
@@ -2858,6 +2788,24 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Environment debug endpoint (admin only)
+app.get('/api/debug/env', authenticateToken, (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  res.json({
+    nodeEnv: process.env.NODE_ENV || 'not set',
+    port: process.env.PORT || 'not set',
+    jwtSecretSet: !!process.env.JWT_SECRET,
+    jwtSecretSource: process.env.JWT_SECRET ? 'environment' : 'default',
+    jwtSecretLength: JWT_SECRET.length,
+    jwtSecretPreview: JWT_SECRET.substring(0, 20) + '...',
+    renderEnvironment: !!process.env.RENDER,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Database initialization endpoint (admin only)
 app.post('/api/init-database', authenticateToken, async (req, res) => {
   try {
@@ -3225,7 +3173,7 @@ app.post('/api/teachers/weekly-report', authenticateToken, (req, res) => {
     }
     
     query += `
-      GROUP BY s.id, s.name, s.roll_number, c.name, s.section
+      GROUP BY s.id, s.name, s.roll_number, c.name, c.section
       ORDER BY c.name, s.roll_number
     `;
     
