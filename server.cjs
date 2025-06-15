@@ -52,6 +52,61 @@ app.get('/api/env-debug', (req, res) => {
   });
 });
 
+// DEBUG: Database schema endpoint (temporary for production debugging)
+app.get('/api/db-debug', (req, res) => {
+  try {
+    // Check if classes table exists and get its schema
+    const tablesQuery = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    const tables = tablesQuery.map(t => t.name);
+    
+    let classesSchema = [];
+    let topicsSchema = [];
+    
+    try {
+      const classesInfo = db.pragma('table_info(classes)');
+      classesSchema = classesInfo.map(col => ({ name: col.name, type: col.type }));
+    } catch (e) {
+      classesSchema = [`Error: ${e.message}`];
+    }
+    
+    try {
+      const topicsInfo = db.pragma('table_info(topics)');
+      topicsSchema = topicsInfo.map(col => ({ name: col.name, type: col.type }));
+    } catch (e) {
+      topicsSchema = [`Error: ${e.message}`];
+    }
+
+    // Test simple queries
+    let classesCount = 0;
+    let topicsCount = 0;
+    
+    try {
+      const countResult = db.prepare("SELECT COUNT(*) as count FROM classes").get();
+      classesCount = countResult.count;
+    } catch (e) {
+      classesCount = `Error: ${e.message}`;
+    }
+    
+    try {
+      const countResult = db.prepare("SELECT COUNT(*) as count FROM topics").get();
+      topicsCount = countResult.count;
+    } catch (e) {
+      topicsCount = `Error: ${e.message}`;
+    }
+
+    res.json({
+      allTables: tables,
+      classesSchema,
+      topicsSchema,
+      classesCount,
+      topicsCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Auth middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -1802,6 +1857,7 @@ app.get('/api/reports/class-performance', authenticateToken, (req, res) => {
         AND a.class_id = c.id 
         AND DATE(a.date) BETWEEN ? AND ?
       LEFT JOIN teachers t ON c.teacher_id = t.id
+      LEFT JOIN users u ON t.user_id = u.id
       WHERE 1=1
     `;
     
