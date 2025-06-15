@@ -26,6 +26,7 @@ console.log('🔧 Server configuration:', {
 // Middleware
 app.use(cors({
   origin: [
+    'https://fcom-student-attendance.onrender.com',
     'https://student-attendance-system-4d0g.onrender.com',
     'http://localhost:8080',
     'http://localhost:3000'
