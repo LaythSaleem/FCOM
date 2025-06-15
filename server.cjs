@@ -38,6 +38,20 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Serve static files from the React app build
 app.use(express.static(path.join(__dirname, 'dist')));
 
+// DEBUG: Environment variables endpoint (temporary for production debugging)
+app.get('/api/env-debug', (req, res) => {
+  res.json({
+    port: PORT,
+    nodeEnv: process.env.NODE_ENV || 'development',
+    jwtSecretSet: !!process.env.JWT_SECRET,
+    jwtSecretLength: JWT_SECRET.length,
+    jwtSecretFirst10: JWT_SECRET.substring(0, 10),
+    envVarsCount: Object.keys(process.env).length,
+    hasRenderVars: !!(process.env.RENDER || process.env.RENDER_SERVICE_ID),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Auth middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -1723,11 +1737,11 @@ app.get('/api/reports/student-attendance/:studentId', authenticateToken, (req, r
         c.name as class_name,
         c.section,
         t.name as teacher_name,
-        top.name as topic_name
+        tp.name as topic_name
       FROM attendance a
       LEFT JOIN classes c ON a.class_id = c.id
       LEFT JOIN teachers t ON c.teacher_id = t.id
-      LEFT JOIN topics top ON a.topic_id = top.id
+      LEFT JOIN topics tp ON a.topic_id = tp.id
       WHERE a.student_id = ? AND DATE(a.date) BETWEEN ? AND ?
       ORDER BY a.date DESC
     `).all(studentId, start, end);
@@ -3155,7 +3169,7 @@ app.post('/api/teachers/weekly-report', authenticateToken, (req, res) => {
     }
     
     query += `
-      GROUP BY s.id, s.name, s.roll_number, c.name, c.section
+      GROUP BY s.id, s.name, s.roll_number, c.name, s.section
       ORDER BY c.name, s.roll_number
     `;
     
