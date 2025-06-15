@@ -966,6 +966,7 @@ app.get('/api/classes', authenticateToken, (req, res) => {
   try {
     console.log('🎯 Fetching classes...');
     
+    // First get basic class info
     const classes = db.prepare(`
       SELECT 
         c.id,
@@ -982,49 +983,58 @@ app.get('/api/classes', authenticateToken, (req, res) => {
       ORDER BY c.name, c.section
     `).all();
 
-    // Get topics and student counts for each class
-    const classesWithData = classes.map(classItem => {
-      try {
-        // Get topics count
-        const topicCount = db.prepare(`
-          SELECT COUNT(*) as count FROM topics WHERE class_id = ?
-        `).get(classItem.id);
+    console.log(`Found ${classes.length} classes, adding counts and topics...`);
 
+    // Add additional data for each class
+    const enrichedClasses = classes.map(classItem => {
+      let student_count = 0;
+      let total_topics = 0;
+      let topics = [];
+
+      try {
         // Get student count
-        const studentCount = db.prepare(`
-          SELECT COUNT(*) as count FROM student_enrollments WHERE class_id = ?
+        const studentResult = db.prepare(`
+          SELECT COUNT(*) as count 
+          FROM student_enrollments 
+          WHERE class_id = ?
         `).get(classItem.id);
+        student_count = studentResult?.count || 0;
+
+        // Get topics count
+        const topicCountResult = db.prepare(`
+          SELECT COUNT(*) as count 
+          FROM topics 
+          WHERE class_id = ?
+        `).get(classItem.id);
+        total_topics = topicCountResult?.count || 0;
 
         // Get topics list
-        const topics = db.prepare(`
+        topics = db.prepare(`
           SELECT id, name, description, status, order_index
           FROM topics
           WHERE class_id = ?
-          ORDER BY order_index, created_at
+          ORDER BY order_index, name
         `).all(classItem.id);
 
-        return {
-          ...classItem,
-          student_count: studentCount?.count || 0,
-          total_topics: topicCount?.count || 0,
-          topics: topics || []
-        };
-      } catch (err) {
-        console.error(`Error processing class ${classItem.id}:`, err);
-        return {
-          ...classItem,
-          student_count: 0,
-          total_topics: 0,
-          topics: []
-        };
+      } catch (subError) {
+        console.error(`Error processing class ${classItem.id}:`, subError.message);
       }
+
+      return {
+        ...classItem,
+        student_count,
+        total_topics,
+        topics
+      };
     });
 
-    console.log(`✅ Found ${classes.length} classes`);
-    res.json(classesWithData);
+    console.log(`✅ Successfully processed ${enrichedClasses.length} classes`);
+    res.json(enrichedClasses);
+    
   } catch (error) {
-    console.error('❌ Classes fetch error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Classes fetch error:', error.message);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
