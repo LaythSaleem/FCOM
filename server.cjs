@@ -15,6 +15,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
+console.log('🔧 Server configuration:', {
+  port: PORT,
+  jwtSecretSet: !!process.env.JWT_SECRET,
+  jwtSecretFromEnv: !!process.env.JWT_SECRET,
+  jwtSecretLength: JWT_SECRET.length,
+  environment: process.env.NODE_ENV || 'development'
+});
+
 // Middleware
 app.use(cors({
   origin: [
@@ -35,12 +43,25 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+  console.log('🔐 Auth check:', {
+    hasAuthHeader: !!authHeader,
+    hasToken: !!token,
+    tokenStart: token ? token.substring(0, 20) + '...' : 'none',
+    jwtSecretSet: !!JWT_SECRET,
+    jwtSecretLength: JWT_SECRET ? JWT_SECRET.length : 0
+  });
+
   if (!token) {
+    console.log('❌ No token provided');
     return res.sendStatus(401);
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
+    if (err) {
+      console.log('❌ JWT verification failed:', err.message);
+      return res.sendStatus(403);
+    }
+    console.log('✅ JWT verified for user:', user.email, 'role:', user.role);
     req.user = user;
     next();
   });
