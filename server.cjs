@@ -11,6 +11,37 @@ const path = require('path');
 const dbPath = path.join(__dirname, 'database.sqlite');
 const db = new Database(dbPath);
 
+// Initialize database schema if needed
+const initializeDatabase = () => {
+  try {
+    // Check if users table exists
+    const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").get();
+    
+    if (!tableExists) {
+      console.log('🔧 Initializing database schema...');
+      
+      // Import and run initialization
+      const fs = require('fs');
+      const initDbScript = fs.readFileSync(path.join(__dirname, 'init-db.cjs'), 'utf8');
+      
+      // Extract and run the schema creation part
+      // This is a simple approach - in production you'd want a more robust migration system
+      const { execSync } = require('child_process');
+      execSync('node init-db.cjs', { cwd: __dirname });
+      
+      console.log('✅ Database schema initialized');
+    } else {
+      console.log('✅ Database schema already exists');
+    }
+  } catch (error) {
+    console.error('❌ Database initialization error:', error);
+    // Don't exit - let the server try to run anyway
+  }
+};
+
+// Initialize database on startup
+initializeDatabase();
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
