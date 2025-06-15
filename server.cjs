@@ -599,7 +599,7 @@ app.get('/api/students/my-attendance', authenticateToken, (req, res) => {
 // Teachers routes
 app.get('/api/teachers', authenticateToken, (req, res) => {
   try {
-    console.log('🎯 Fetching teachers with topic assignments...');
+    console.log('🎯 Fetching teachers...');
     
     const teachers = db.prepare(`
       SELECT 
@@ -610,29 +610,8 @@ app.get('/api/teachers', authenticateToken, (req, res) => {
       ORDER BY t.name
     `).all();
 
-    // Get topic assignments for each teacher
-    const teachersWithTopics = teachers.map(teacher => {
-      const topics = db.prepare(`
-        SELECT 
-          tta.topic_id,
-          tp.name as topic_name,
-          tp.class_id,
-          c.name as class_name
-        FROM teacher_topic_assignments tta
-        JOIN topics tp ON tta.topic_id = tp.id
-        JOIN classes c ON tp.class_id = c.id
-        WHERE tta.teacher_id = ? AND tta.status = 'active'
-        ORDER BY c.name, tp.name
-      `).all(teacher.id);
-
-      return {
-        ...teacher,
-        topics
-      };
-    });
-
-    console.log(`✅ Found ${teachers.length} teachers with topic assignments`);
-    res.json(teachersWithTopics);
+    console.log(`✅ Found ${teachers.length} teachers`);
+    res.json(teachers);
   } catch (error) {
     console.error('❌ Error fetching teachers:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -985,52 +964,66 @@ app.delete('/api/topics/:id', authenticateToken, (req, res) => {
 // Classes endpoint
 app.get('/api/classes', authenticateToken, (req, res) => {
   try {
+    console.log('🎯 Fetching classes...');
+    
     const classes = db.prepare(`
       SELECT 
         c.id,
         c.name,
         c.section,
-        c.academic_year_id as academic_year,
+        c.academic_year_id,
         c.created_at,
         c.description,
         c.capacity,
         t.name as teacher_name,
-        t.id as teacher_id,
-        COUNT(DISTINCT se.student_id) as student_count,
-        COUNT(DISTINCT tp.id) as total_topics
+        t.id as teacher_id
       FROM classes c
       LEFT JOIN teachers t ON c.teacher_id = t.id
-      LEFT JOIN student_enrollments se ON c.id = se.class_id
-      LEFT JOIN topics tp ON c.id = tp.class_id
-      GROUP BY c.id, c.name, c.section, c.academic_year_id, c.created_at, c.description, c.capacity, t.name, t.id
       ORDER BY c.name, c.section
     `).all();
 
-    // Get topics for each class
-    const classesWithTopics = classes.map(classItem => {
-      const topics = db.prepare(`
-        SELECT 
-          id,
-          name,
-          description,
-          status,
-          order_index,
-          created_at,
-          updated_at
-        FROM topics
-        WHERE class_id = ?
-        ORDER BY order_index, created_at
-      `).all(classItem.id);
+    // Get topics and student counts for each class
+    const classesWithData = classes.map(classItem => {
+      try {
+        // Get topics count
+        const topicCount = db.prepare(`
+          SELECT COUNT(*) as count FROM topics WHERE class_id = ?
+        `).get(classItem.id);
 
-      return {
-        ...classItem,
-        topics: topics || []
-      };
+        // Get student count
+        const studentCount = db.prepare(`
+          SELECT COUNT(*) as count FROM student_enrollments WHERE class_id = ?
+        `).get(classItem.id);
+
+        // Get topics list
+        const topics = db.prepare(`
+          SELECT id, name, description, status, order_index
+          FROM topics
+          WHERE class_id = ?
+          ORDER BY order_index, created_at
+        `).all(classItem.id);
+
+        return {
+          ...classItem,
+          student_count: studentCount?.count || 0,
+          total_topics: topicCount?.count || 0,
+          topics: topics || []
+        };
+      } catch (err) {
+        console.error(`Error processing class ${classItem.id}:`, err);
+        return {
+          ...classItem,
+          student_count: 0,
+          total_topics: 0,
+          topics: []
+        };
+      }
     });
 
-    res.json(classesWithTopics);
+    console.log(`✅ Found ${classes.length} classes`);
+    res.json(classesWithData);
   } catch (error) {
-    console.error('Classes fetch error:', error);
+    console.error('❌ Classes fetch error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1884,6 +1877,8 @@ app.get('/api/exam-types', authenticateToken, (req, res) => {
 // Exams endpoint
 app.get('/api/exams', authenticateToken, (req, res) => {
   try {
+    console.log('🎯 Fetching exams...');
+    
     const exams = db.prepare(`
       SELECT 
         e.id,
@@ -1893,22 +1888,48 @@ app.get('/api/exams', authenticateToken, (req, res) => {
         e.start_time,
         e.end_time,
         e.total_marks,
-        e.exam_type_id as exam_type,
+        e.exam_type_id,
         e.class_id,
+        e.topic_id,
         c.name as class_name,
-        c.section as class_section,
-        t.name as topic_name,
-        COUNT(er.id) as result_count
+        c.section as class_section
       FROM exams e
       LEFT JOIN classes c ON e.class_id = c.id
-      LEFT JOIN topics t ON e.topic_id = t.id
-      LEFT JOIN exam_results er ON e.id = er.exam_id
-      GROUP BY e.id
       ORDER BY e.date DESC, e.start_time
     `).all();
-    res.json(exams);
+
+    // Add topic names and result counts separately to avoid complex joins
+    const examsWithDetails = exams.map(exam => {
+      try {
+        // Get topic name if topic_id exists
+        let topic_name = null;
+        if (exam.topic_id) {
+          const topic = db.prepare(`SELECT name FROM topics WHERE id = ?`).get(exam.topic_id);
+          topic_name = topic ? topic.name : null;
+        }
+
+        // Get result count
+        const resultCount = db.prepare(`SELECT COUNT(*) as count FROM exam_results WHERE exam_id = ?`).get(exam.id);
+
+        return {
+          ...exam,
+          topic_name,
+          result_count: resultCount?.count || 0
+        };
+      } catch (err) {
+        console.error(`Error processing exam ${exam.id}:`, err);
+        return {
+          ...exam,
+          topic_name: null,
+          result_count: 0
+        };
+      }
+    });
+
+    console.log(`✅ Found ${exams.length} exams`);
+    res.json(examsWithDetails);
   } catch (error) {
-    console.error('Exams fetch error:', error);
+    console.error('❌ Exams fetch error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
